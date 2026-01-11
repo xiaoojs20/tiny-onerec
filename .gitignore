@@ -71,6 +71,11 @@ runs/
 wandb/
 
 output*/
+output_*/
+output_dir/
+output_sft/
+output_rl/
+
 
 # Transformers / Trainer
 trainer_state.json
