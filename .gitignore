@@ -1,0 +1,131 @@
+############################
+# 基础通用
+############################
+.DS_Store
+Thumbs.db
+
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.log
+*.tmp
+*.swp
+*.bak
+
+############################
+# Python / Conda / venv
+############################
+.env
+.venv
+venv/
+conda/
+.envrc
+
+############################
+# Jupyter
+############################
+.ipynb_checkpoints/
+
+############################
+# 数据集（重点）
+############################
+# 通用数据目录
+data/**/*
+dataset/**/*
+datasets/**/*
+
+# OneRec / Amazon / RecSys 常见
+Amazon*
+amazon*
+ml-*
+movielens*
+
+
+# 中间产物
+*.csv
+*.tsv
+*.parquet
+*.arrow
+*.npy
+*.npz
+*.pt
+*.pth
+*.bin
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+############################
+# 模型 / Checkpoints（重点）
+############################
+# HuggingFace / LLM
+models/
+checkpoints/
+ckpt/
+ckpts/
+output/
+outputs/
+runs/
+wandb/
+
+# Transformers / Trainer
+trainer_state.json
+optimizer.pt
+scheduler.pt
+rng_state.pth
+
+# LoRA / Adapter
+adapter_model.bin
+adapter_model.safetensors
+adapter_config.json
+*.safetensors
+
+############################
+# RQ-VAE / Embedding / SID
+############################
+emb/
+embeddings/
+embedding/
+rqvae/output/
+rqvae/checkpoints/
+sid/
+sid_cache/
+
+############################
+# 日志 & 结果
+############################
+logs/
+log/
+results/
+eval_results/
+metrics/
+
+############################
+# 分布式 / Ray / verl
+############################
+ray_results/
+ray_logs/
+tmp/
+tmp_ray/
+
+############################
+# 编译 & 构建
+############################
+build/
+dist/
+
+############################
+# IDE
+############################
+.vscode/
+.idea/
+*.iml
+
+############################
+# 本地私有配置
+############################
+*.env
+*.secret
+*.key

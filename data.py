@@ -79,7 +79,6 @@ class SFTData(Dataset):
 ### Response:\n{data_point["output"]}"""
 
 
-
     def get_history(self, row):
         row['history_item_title'] = eval(row['history_item_title'])
         L = len(row['history_item_title']) 
@@ -91,7 +90,7 @@ class SFTData(Dataset):
             else:
                 history += ",\t\"" + row['history_item_title'][i] + "\""      
         target_item = str(row['item_title'])
-        target_item = "\"" + target_item + "\"\n"
+        target_item = "\"" + target_item + "\""
         target_item_id = row["item_id"]
         last_history_item_id = eval(row["history_item_id"])[-1]
         return {"input": f"The user has palyed the following {self.category}s before: {history}",
@@ -111,9 +110,7 @@ class SFTData(Dataset):
         target_item = history['output']
         history['output'] = ''
         negative_prompt_ids = copy.deepcopy(tokens)
-        
-                
-           
+     
         prompt = self.generate_prompt(history)
 
         tokens = tokens + self.tokenizer.encode(prompt, bos=False, eos=False)
@@ -121,12 +118,10 @@ class SFTData(Dataset):
         
         attention_mask = [1] * len(tokens)
         
-        
         if self.test:
             return {
                 "input_ids": tokens,
                 "attention_mask": attention_mask,
-                
             }    
         
         golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True)
@@ -143,12 +138,19 @@ class SFTData(Dataset):
             "input_ids": tokens[-self.max_len:],
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
-            
         }
-    
+        
+    def pre_alpaca(self, idx):
+        instruction =  f"""Write a response that appropriately completes the request. \n{self.instructs[random.randint(0, len(self.instructs)-1)]}""" 
 
-    
-    
+        history = self.get_history(self.data.iloc[idx])
+        
+        return {
+            "instruction": instruction,
+            "input": history["input"],
+            "output": history['output'],
+        }
+
     def get_inputs(self):
         inputs = []
         for i in tqdm(range(len(self.data))):
@@ -157,6 +159,14 @@ class SFTData(Dataset):
             
         self.inputs = inputs
     
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
     
     def get_all(self):
         temp = []
@@ -513,12 +523,12 @@ class SidSFTDataset(Dataset):
             if i == 0:
                 history += row['history_item_sid'][i]
             else:
-                history += ", " + row['history_item_sid'][i]      
+                history += ", " + row['history_item_sid'][i]
         target_item = str(row['item_sid'])
         target_item_sid = row["item_sid"]
         last_history_item_sid = row['history_item_sid'][-1] if row['history_item_sid'] else None
         return {"input": f"The user has interacted with items {history} in chronological order. Can you predict the next possible item that the user may expect?",
-                "output": target_item + "\n",
+                "output": target_item,
                 "history_str": history_str,
                 "dedup": target_item_sid == last_history_item_sid}
     
@@ -552,7 +562,7 @@ Can you predict the next possible item that the user may expect?
             return {
                 "input_ids": tokens,
                 "attention_mask": attention_mask,
-            }    
+            }
         
         golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True)
         input_prompt_len = len(tokens)
@@ -568,6 +578,17 @@ Can you predict the next possible item that the user may expect?
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
         }
+
+    def pre_alpaca(self, idx):
+        instruction = "Can you predict the next possible item that the user may expect?"
+        
+        history = self.get_history(self.data.iloc[idx])
+        
+        return {
+            "instruction": instruction,
+            "input": history["input"],
+            "output": history['output'],
+        }
     
     def get_inputs(self):
         inputs = []
@@ -575,6 +596,16 @@ Can you predict the next possible item that the user may expect?
             inputs.append(self.pre(i))
             
         self.inputs = inputs
+    
+    
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
     
     def get_all(self):
         temp = []
@@ -790,6 +821,17 @@ class SidItemFeatDataset(Dataset):
 {prompt}
 
 ### Response:\n{response}"""
+
+    def generate_prompt_response(self, data_point):
+        if data_point['task'] == 'title2sid':
+            prompt = f"Which item has the title: {data_point['input']}?"
+            response = data_point['output']
+        else:  # sid2title
+            prompt = f'What is the title of item "{data_point["input"]}"?'
+            response = data_point['output']
+        
+        return prompt, response
+
     
     def pre(self, idx):
         if self.tokenizer is None:
@@ -832,12 +874,35 @@ Answer the question about item identification.
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
         }
-    
+        
+    def pre_alpaca(self, idx):
+        if self.tokenizer is None:
+            return self.data[idx]
+
+        instruction = "Answer the question about item identification."
+        data_point = self.data[idx]
+        prompt, response = self.generate_prompt_response(data_point)
+        
+        return {
+            "instruction": instruction,
+            "input": prompt,
+            "output": response,
+        }
+
     def get_inputs(self):
         inputs = []
         for i in tqdm(range(len(self.data))):
             inputs.append(self.pre(i))
         self.inputs = inputs
+    
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
     
     def get_inputs_list(self):
         return self.inputs if hasattr(self, 'inputs') else [self.pre(i) for i in range(len(self))]
@@ -1467,6 +1532,8 @@ class FusionSeqRecDataset(Dataset):
 {prompt}
 
 ### Response:\n{response}"""
+
+
     
     def pre(self, idx):
         instruction = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
@@ -1521,6 +1588,36 @@ Can you recommend the next item for the user based on their interaction history?
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
         }
+        
+    def pre_alpaca(self, idx):
+        instruction = "Can you recommend the next item for the user based on their interaction history?"  
+        
+        history_data = self.get_history(self.data.iloc[idx])
+        
+        # Skip if duplicate and dedup is enabled
+        if self.dedup and history_data['dedup']:
+            return None
+        
+        # Randomly choose between title and description tasks
+        """if random.random() < 0.5:
+            # Title task
+            prompt = self.generate_prompt_title(history_data['history_str'])
+            target = history_data['target_title'] + '\n'
+        else:
+            # Description task
+            prompt = self.generate_prompt_description(history_data['history_str'])
+            target = history_data['target_description'] + '\n'
+        """
+        prompt = self.generate_prompt_title(history_data['history_str'])
+        target = history_data['target_title']
+        # print("fusion prompt: ", prompt)
+        
+        return {
+            "instruction": instruction,
+            "input": prompt,
+            "output": target,
+        }
+
     
     def get_inputs(self):
         inputs = []
@@ -1529,6 +1626,16 @@ Can you recommend the next item for the user based on their interaction history?
             if result is not None:  # Skip None results from deduplication
                 inputs.append(result)
         self.inputs = inputs
+    
+    
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
     
     def get_inputs_list(self):
         return self.inputs if hasattr(self, 'inputs') else []
@@ -1621,7 +1728,7 @@ class TitleHistory2SidSFTDataset(Dataset):
         
         return {
             "input": f"The user has interacted with the following {self.category} items in chronological order: {history_titles}. Can you predict the next item the user may expect?",
-            "output": target_sid + "\n",
+            "output": target_sid,
             "history_titles": history_titles,
             "target_sid": target_sid,
             "dedup": is_duplicate
@@ -1669,6 +1776,21 @@ Based on the user's historical interaction with item titles, predict the semanti
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
         }
+        
+    def pre_alpaca(self, idx):
+        instruction = "Based on the user's historical interaction with item titles, predict the semantic ID of the next item they may expect."
+        
+        history_data = self.get_history(self.data.iloc[idx])
+        
+        # Skip if duplicate and dedup is enabled
+        if self.dedup and history_data['dedup']:
+            return None
+        
+        return {
+            "instruction": instruction,
+            "input": history_data['input'],
+            "output": history_data['output'],
+        }
     
     def get_inputs(self):
         inputs = []
@@ -1677,6 +1799,15 @@ Based on the user's historical interaction with item titles, predict the semanti
             if result is not None:  # Skip None results from deduplication
                 inputs.append(result)
         self.inputs = inputs
+        
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
     
     def get_all(self):
         temp = []

@@ -129,7 +129,6 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
         # For train data, add only the longest sequences (if enabled)
         if split_name == 'train' and keep_longest_only:
             rows = list(user_to_longest.values())
-        
         # Apply sample limits for valid/test sets
         original_count = len(rows)
         if split_name == 'valid' and max_valid_samples is not None and len(rows) > max_valid_samples:
@@ -142,7 +141,7 @@ def convert_interactions_to_csv(splits: Dict[str, List], items: Dict[str, Dict],
         # Save to CSV
         if rows:
             df = pd.DataFrame(rows)
-            output_file = os.path.join(output_dir, f'{category}_5_2016-10-2018-11.csv')
+            output_file = os.path.join(output_dir, f'{category}_convert.csv')
             df.to_csv(output_file, index=False)
             print(f"Created {split_name} file: {output_file} with {len(rows)} rows")
             if split_name == 'train' and keep_longest_only:
@@ -176,7 +175,6 @@ def main():
                        help='Random seed for sampling')
     parser.add_argument('--keep_longest_only', action='store_true', default=False,
                        help='Keep only longest sequence per user in train data (default: False)')
-    
     args = parser.parse_args()
     
     # Default category to dataset name if not specified
@@ -200,7 +198,7 @@ def main():
         os.makedirs(os.path.join(args.output_dir, subdir), exist_ok=True)
     
     # Create item info file
-    info_file = os.path.join(args.output_dir, 'info', f'{args.category}_5_2016-10-2018-11.txt')
+    info_file = os.path.join(args.output_dir, 'info', f'{args.category}_convert.txt')
     create_item_info_file(dataset_data['items'], dataset_data['item_to_semantic'], info_file)
     print(f"Created item info file: {info_file}")
     

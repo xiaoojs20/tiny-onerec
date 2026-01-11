@@ -31,6 +31,7 @@ from torch.utils.data import ConcatDataset
 
 
 class TokenExtender:
+    """根据 index 文件扩展 tokenizer 词表"""
     def __init__(self, data_path, dataset, index_file=".index.json"):
         self.data_path = data_path
         self.dataset = dataset
@@ -98,9 +99,8 @@ def train(
     output_dir: str = "",
     sample: int = -1,
     seed: int = 42,
-    
     # training hyperparams
-    batch_size: int = 128,
+    batch_size: int = 64,
     micro_batch_size: int = 4,
     num_epochs: int = 10,
     learning_rate: float = 3e-4,
@@ -137,7 +137,8 @@ def train(
     if not train_from_scratch:
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
-            torch_dtype=torch.bfloat16,
+            # torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         )
     else:
         config = AutoConfig.from_pretrained(base_model)
@@ -206,7 +207,7 @@ def train(
     train_data = ConcatDataset(train_datasets)
     val_data = SidSFTDataset(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=sample, seed=seed, category=category)
     # val_data = SFTData(train_file=eval_file, tokenizer=tokenizer, max_len=cutoff_len,  sample=20000, seed=seed, category=category)
-    print("LOAD DATA FINISHED")    
+    print("LOAD DATA FINISHED")
     
     if resume_from_checkpoint:
         checkpoint_name = os.path.join(
@@ -225,12 +226,13 @@ def train(
 
     print(hf_train_dataset)
     print(hf_val_dataset)
-    eval_step = 0.05
+    eval_step = 100
     trainer = transformers.Trainer(
         # deepspeed=deepspeed,
         model=model,
         train_dataset=hf_train_dataset,
         eval_dataset=hf_val_dataset,
+        
         args=transformers.TrainingArguments(
             # deepspeed=deepspeed,
             run_name=wandb_run_name,
@@ -268,8 +270,6 @@ def train(
     output_dir = os.path.join(output_dir, "final_checkpoint")
     trainer.model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-
-
 
 if __name__ == "__main__":
     fire.Fire(train)

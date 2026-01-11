@@ -62,6 +62,7 @@ def get_timestamp_start(year, month):
 
 def load_metadata_json2csv_style(category, metadata_file=None):
     """Load metadata using json2csv style processing"""
+    # 对标题正常的 asin，存到 id_title[asin] = title，否则记在 remove_items
     if metadata_file is None:
         metadata_file = f'../meta_{category}.json'
     
@@ -120,6 +121,8 @@ def load_reviews_json2csv_style(category, reviews_file=None, start_timestamp=Non
 
 def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None, end_timestamp=None):
     """Perform k-core filtering using json2csv style logic"""
+    # 过滤掉不在时间窗口的、没有标题的 item
+    # 记录交互次数 < K 的 user/item
     remove_users = set()
     remove_items = set()
     
@@ -129,6 +132,11 @@ def k_core_filtering_json2csv_style(reviews, id_title, K=5, start_timestamp=None
             remove_items.add(review['asin'])
     
     # Iterative k-core filtering (exactly like json2csv)
+    # flag 表示这轮有没有新增的被删对象
+    # 为什么要while True
+    # 一轮只能找到当前交互数 < K 的用户/商品，
+    # 删掉这些之后，剩下的用户/商品的交互数会变化，
+    # 于是又会出现新的 < K 的对象，所以必须一轮一轮迭代，直到不再出现新的低交互对象
     while True:
         new_reviews = []
         flag = False
@@ -192,6 +200,7 @@ def convert_inters2dict_amazon18_style(reviews):
         user_reviews[user].sort(key=lambda x: int(x['unixReviewTime']))
     
     # Create mappings and interactions
+    # user2index, item2index，从0 开始编码 index
     interactions = []
     for user in user_reviews:
         if user not in user2index:
@@ -234,7 +243,7 @@ def generate_interaction_list_json2csv_style(reviews, user2index, item2index, id
                 'titles': []
             }
         
-        # Keep all interactions like json2csv (no deduplication)
+        # Keep all interactions like json2csv (no deduplication) 收集成 list
         interact[user]['items'].append(item)
         interact[user]['ratings'].append(review['overall'])
         interact[user]['timestamps'].append(review['unixReviewTime'])
@@ -257,6 +266,7 @@ def generate_interaction_list_json2csv_style(reviews, user2index, item2index, id
         items, ratings, timestamps, item_ids, titles = list(items), list(ratings), list(timestamps), list(item_ids), list(titles)
         
         # Create sequences like json2csv (sliding window with max history of 10)
+        # history 10 截断 -> next target
         for i in range(1, len(items)):
             st = max(i - 10, 0)
             interaction_list.append([
@@ -504,6 +514,7 @@ if __name__ == '__main__':
     print(f"Loaded {len(reviews)} total reviews")
     
     # Process dataset with recursive logic
+    # 加载 meta -> k-core 过滤（&时间过滤）-> 检查 item 数量，不够就扩展时间范围，递归调用自己
     result = process_dataset_recursive(args, None, reviews, start_timestamp, end_timestamp)
     
     if result is None:
@@ -518,6 +529,7 @@ if __name__ == '__main__':
     
     # Convert to amazon18 style format
     print("Converting to amazon18 format...")
+    # 筛选后的user / item 重新从0开始编号 index; interactions=(user, item, review, timestamp)
     user2items, user2index, item2index, interactions = convert_inters2dict_amazon18_style(filtered_reviews)
     
     print(f"After amazon18 conversion:")
@@ -534,6 +546,7 @@ if __name__ == '__main__':
     print(f"Generated {len(interaction_list)} interaction sequences")
     
     # Create output directory and split data
+    # 按照target 的时间顺序划分，防止泄露
     train_interactions, valid_interactions, test_interactions = convert_to_atomic_files_json2csv_style(
         args, interaction_list, user2index
     )

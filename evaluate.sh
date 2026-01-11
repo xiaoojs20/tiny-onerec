@@ -3,14 +3,14 @@
 for category in "Industrial_and_Scientific"
 do
     # your model path
-    exp_name="xxx"
+    exp_name="evaluate"
 
     exp_name_clean=$(basename "$exp_name")
     echo "Processing category: $category with model: $exp_name_clean (STANDARD MODE)"
     
-    train_file=$(ls ./data/Amazon/train/${category}*.csv 2>/dev/null | head -1)
-    test_file=$(ls ./data/Amazon/test/${category}*11.csv 2>/dev/null | head -1)
-    info_file=$(ls ./data/Amazon/info/${category}*.txt 2>/dev/null | head -1)
+    train_file=$(ls ./data/AmazonTest/train/${category}*.csv 2>/dev/null | head -1)
+    test_file=$(ls ./data/AmazonTest/test/${category}*11.csv 2>/dev/null | head -1)
+    info_file=$(ls ./data/AmazonTest/info/${category}*.txt 2>/dev/null | head -1)
     
     if [[ ! -f "$test_file" ]]; then
         echo "Error: Test file not found for category $category"

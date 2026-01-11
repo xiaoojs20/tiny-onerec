@@ -19,8 +19,12 @@ class ResidualEncoderWrapper(nn.Module):
 
     def forward(self, x):
         return x + self.mlp(x)
+        # return self.mlp(x)
 
 def deal_with_deduplicate(df):
+    """
+    去重逻辑：对于重复的 code 序列，给它们依次加上后缀排名
+    """
 
     df_with_index = df.with_row_index()
 
@@ -56,7 +60,9 @@ def load_model(args, dim):
                   )
     
     if hasattr(model, 'encoder'):
-        model.encoder = ResidualEncoderWrapper(model.encoder)
+        # model.encoder = ResidualEncoderWrapper(model.encoder)
+        print("encoder")
+        # pass
     else:
         raise ValueError("Model structure mismatch: 'encoder' not found.")
     
@@ -66,7 +72,11 @@ def load_model(args, dim):
         raise FileNotFoundError(f"Checkpoint not found at {args.ckpt_path}")
     
     print(f"Loading checkpoint: {args.ckpt_path}")
-    checkpoint = torch.load(args.ckpt_path, map_location=args.device)
+    checkpoint = torch.load(
+        args.ckpt_path, 
+        map_location=args.device,
+        weights_only=False
+    )
     
     if 'model_state_dict' in checkpoint:
         state_dict = checkpoint['model_state_dict']
@@ -99,15 +109,17 @@ def generate_sids(args):
         for batch in tqdm(data_loader, desc="Encoding"):
             batch = batch.to(args.device)
             
-            # RQ-KMeans+ Forward: Z = X + MLP(X)
+            # RQ-KMeans + Forward: Z = X + MLP(X)
+            # print(batch.shape) # torch.Size([2048, 1024])
+
             z = model.encoder(batch)
             
             # Quantization
-            ret = model.rq(z)
+            ret = model.rq(z)   # returns (x_q, mean_losses, all_indices)
             if isinstance(ret, tuple):
                 codes = ret[-1]
             else:
-                codes = ret
+                codes = ret 
                 
             all_codes.append(codes.cpu().numpy())
 
@@ -120,7 +132,7 @@ def generate_sids(args):
 
     print("Running Polars Deduplication...")
     codes_df = pl.DataFrame({'codes': [list(c) for c in all_codes]})
-    codes_dedup = deal_with_deduplicate(codes_df)
+    codes_dedup = deal_with_deduplicate(codes_df) # 🌟 做碰撞去重
 
     print("Formatting to JSON...")
     codes_json = {}
@@ -128,7 +140,9 @@ def generate_sids(args):
     for doc_id, row in enumerate(tqdm(codes_dedup.iter_rows(named=True), total=len(codes_dedup))):
         token_list = []
         code_seq = row['codes']
-        
+
+        # 第 0 层 code=12 → <a_12>，第 1 层 code=7 → <b_7>。
+        # 最终得到 {"0": ["<a_12>", "<b_7>", ...], "1": [...], ...} 这种 JSON
         for level_idx, val in enumerate(code_seq):
             prefix = chr(97 + level_idx)
             token = f"<{prefix}_{val}>"
@@ -178,7 +192,7 @@ def parse_args():
     
     parser.add_argument('--batch_size', type=int, default=2048)
     parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument("--device", type=str, default="cuda:0")
+    parser.add_argument("--device", type=str, default="cuda")
 
     return parser.parse_args()
 

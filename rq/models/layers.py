@@ -94,7 +94,6 @@ def sinkhorn_algorithm(distances, epsilon, sinkhorn_iterations):
     Q /= sum_Q
     # print(Q.sum())
     for it in range(sinkhorn_iterations):
-
         # normalize each column: total weight per sample must be 1/B
         Q /= torch.sum(Q, dim=1, keepdim=True)
         Q /= B
@@ -103,6 +102,6 @@ def sinkhorn_algorithm(distances, epsilon, sinkhorn_iterations):
         Q /= torch.sum(Q, dim=0, keepdim=True)
         Q /= K
 
-
     Q *= B # the colomns must sum to 1 so that Q is an assignment
     return Q
+    

@@ -17,14 +17,12 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--epochs', type=int, default=5000, help='number of epochs')
     parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
-    parser.add_argument('--num_workers', type=int, default=4, )
+    parser.add_argument('--num_workers', type=int, default=4, help='num workers')
     parser.add_argument('--eval_step', type=int, default=50, help='eval step')
     parser.add_argument('--learner', type=str, default="AdamW", help='optimizer')
     parser.add_argument('--lr_scheduler_type', type=str, default="constant", help='scheduler')
     parser.add_argument('--warmup_epochs', type=int, default=50, help='warmup epochs')
-    parser.add_argument("--data_path", type=str,
-                        default="../data/Games/Games.emb-llama-td.npy",
-                        help="Input data path.")
+    parser.add_argument("--data_path", type=str, required=True, help="Input data path.")
 
     parser.add_argument("--weight_decay", type=float, default=0.0, help='l2 regularization weight')
     parser.add_argument("--dropout_prob", type=float, default=0.0, help="dropout ratio")
@@ -35,7 +33,7 @@ def parse_args():
     parser.add_argument('--sk_epsilons', type=float, nargs='+', default=[0.0, 0.0, 0.0], help="sinkhorn epsilons")
     parser.add_argument("--sk_iters", type=int, default=50, help="max sinkhorn iters")
 
-    parser.add_argument("--device", type=str, default="cuda:0", help="gpu or cpu")
+    parser.add_argument("--device", type=str, default="cuda", help="gpu or cpu")
 
     parser.add_argument('--num_emb_list', type=int, nargs='+', default=[256,256,256], help='emb num of every vq')
     parser.add_argument('--e_dim', type=int, default=32, help='vq codebook embedding size')
@@ -68,6 +66,7 @@ if __name__ == '__main__':
 
     """build dataset"""
     data = EmbDataset(args.data_path)
+    # 🌟
     model = RQVAE(in_dim=data.dim,
                   num_emb_list=args.num_emb_list,
                   e_dim=args.e_dim,
@@ -86,7 +85,8 @@ if __name__ == '__main__':
     data_loader = DataLoader(data,num_workers=args.num_workers,
                              batch_size=args.batch_size, shuffle=True,
                              pin_memory=True)
-    trainer = Trainer(args,model, len(data_loader))
+    # 🌟
+    trainer = Trainer(args, model, len(data_loader))
     best_loss, best_collision_rate = trainer.fit(data_loader)
 
     print("Best Loss",best_loss)

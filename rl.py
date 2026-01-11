@@ -15,7 +15,7 @@ import math
 import json
 from sklearn.metrics import ndcg_score
 
-os.environ['WANDB_MODE'] = 'disabled'
+# os.environ['WANDB_MODE'] = 'disabled'
 
 def set_seed(seed):
     random.seed(seed)
@@ -66,6 +66,7 @@ def train(
     item_meta_path: str = "",
     dapo: bool = False,
     gspo: bool = False,
+    resume_from: str = "",   # 断点路径，默认空表示不续训
 ):
     torch.backends.cuda.enable_flash_sdp(False)  
     torch.backends.cuda.enable_mem_efficient_sdp(False)
@@ -133,9 +134,15 @@ def train(
     print("train_dataset: ", train_dataset)
     print("eval_dataset: ", eval_dataset)
 
-    llm_model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="auto")
+
+    model_load_path = resume_from if resume_from else model_path
+    llm_model = AutoModelForCausalLM.from_pretrained(
+        model_load_path, 
+        dtype=torch.bfloat16, 
+        device_map="auto"
+    )
     device = llm_model.device
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_load_path)
     
     len_seq = 10
     item_num = len(item_name)
@@ -258,7 +265,7 @@ def train(
         reward_fun = cf_reward
     
     os.environ['WANDB_PROJECT'] = wandb_project
-    os.environ["WANDB_MODE"] = "offline"
+    # os.environ["WANDB_MODE"] = "offline"
 
     training_args = GRPOConfig(output_dir=output_dir,
                                 save_steps=0.1,
@@ -276,11 +283,11 @@ def train(
                                 learning_rate=learning_rate,
                                 beta=beta,
                                 warmup_ratio=0.03,
-                                max_grad_norm= 0.3,
+                                max_grad_norm=0.3,
                                 num_train_epochs=num_train_epochs,
                                 bf16=True,
                                 optim="paged_adamw_32bit",
-                                lr_scheduler_type="cosine", 
+                                lr_scheduler_type="cosine",
                                 save_strategy="steps",
                                 report_to="wandb",
                                 run_name=wandb_run_name,
@@ -304,7 +311,13 @@ def train(
         args=training_args,
     )
 
-    trainer.train()
+    # trainer.train()
+    
+    if resume_from:  # 传了具体路径
+        print(f"[INFO] Resume training from checkpoint: {resume_from}")
+        trainer.train(resume_from_checkpoint=resume_from)
+    else:            # 正常从头训
+        trainer.train()
 
     trainer.save_model(output_dir)
 

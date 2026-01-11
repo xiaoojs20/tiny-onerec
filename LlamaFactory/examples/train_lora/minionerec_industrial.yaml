@@ -1,0 +1,48 @@
+### model
+model_name_or_path: /home/xiaojinsong/桌面/sdb1_xiaojinsong/llms/Qwen/Qwen3-0.6B
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full # full or lora
+lora_rank: 16
+lora_target: all
+deepspeed: examples/deepspeed/ds_z2_config.json  # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+
+### dataset
+dataset: train_sid_sft,train_sid_item_feat,train_fusion_seq_rec,train_sft,train_title_history2sid_sft
+template: qwen3_nothink
+cutoff_len: 2048
+max_samples: null
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+output_dir: saves/minionerec/sft
+logging_steps: 10
+save_steps: 2000
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: wandb  # choices: [none, wandb, tensorboard, swanlab, mlflow]
+run_name: minionerec_sft_industrial
+
+### train
+per_device_train_batch_size: 8
+gradient_accumulation_steps: 4
+learning_rate: 1e-4
+num_train_epochs: 10.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
+
+### eval
+eval_dataset: val_sid_sft
+val_size: 0
+per_device_eval_batch_size: 16
+eval_strategy: steps
+eval_steps: 20
+

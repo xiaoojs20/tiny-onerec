@@ -57,6 +57,7 @@ def generate_item_embedding(args, item_text_list, tokenizer, model, accelerator,
     num_processes = accelerator.num_processes
     process_index = accelerator.process_index
     
+    # 按照进程划分数据
     chunk_size = int(np.ceil(total_items / num_processes))
     start_idx = process_index * chunk_size
     end_idx = min(start_idx + chunk_size, total_items)
@@ -69,7 +70,7 @@ def generate_item_embedding(args, item_text_list, tokenizer, model, accelerator,
         print(f"Start generating embeddings with {num_processes} processes...")
 
     local_results = []
-    batch_size = 1024 
+    batch_size = args.batch_size 
     
     pbar = tqdm(total=len(local_texts), desc=f"Proc {process_index}", disable=not accelerator.is_local_main_process)
 
@@ -114,7 +115,7 @@ def generate_item_embedding(args, item_text_list, tokenizer, model, accelerator,
             mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
             
             sum_embeddings = torch.sum(last_hidden * mask_expanded, dim=1)
-            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9) # 每个句子的有效 token 数
             
             mean_output = sum_embeddings / sum_mask # [batch, dim]
             
@@ -151,7 +152,20 @@ def load_qwen_model(model_path):
     model = AutoModel.from_pretrained(
         model_path, 
         trust_remote_code=True,
-        torch_dtype=torch.float16,
+        # torch_dtype=torch.float16,
+        dtype=torch.bfloat16,
+        low_cpu_mem_usage=True
+    )
+    return tokenizer, model
+
+def load_emb_model(model_path):
+    print("Loading Embedding Model:", model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoModel.from_pretrained(
+        model_path, 
+        trust_remote_code=True,
+        # torch_dtype=torch.float16,
+        dtype=torch.bfloat16,
         low_cpu_mem_usage=True
     )
     return tokenizer, model
@@ -165,6 +179,7 @@ def parse_args():
     parser.add_argument('--plm_checkpoint', type=str, default='xxx', help='Qwen model path')
     parser.add_argument('--max_sent_len', type=int, default=2048)
     parser.add_argument('--word_drop_ratio', type=float, default=-1, help='word drop ratio')
+    parser.add_argument('--batch_size', type=int, default=64, help='batch size for embedding')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -176,9 +191,9 @@ if __name__ == '__main__':
         print(f"Running with {accelerator.num_processes} processes.")
 
     item_text_list = preprocess_text(args)
+    print(item_text_list[:2])
 
-    plm_tokenizer, plm_model = load_qwen_model(args.plm_checkpoint)
-    
+    plm_tokenizer, plm_model = load_emb_model(args.plm_checkpoint)
     plm_model = plm_model.to(accelerator.device)
     plm_model.eval()
 

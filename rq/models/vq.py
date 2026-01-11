@@ -10,15 +10,16 @@ class VectorQuantizer(nn.Module):
                  beta = 0.25, kmeans_init = False, kmeans_iters = 10,
                  sk_epsilon=0.003, sk_iters=100,):
         super().__init__()
-        self.n_e = n_e
-        self.e_dim = e_dim
+        self.n_e = n_e             # codebook 大小（有多少个离散 code）
+        self.e_dim = e_dim         # code dim
         self.beta = beta
         self.kmeans_init = kmeans_init
         self.kmeans_iters = kmeans_iters
-        self.sk_epsilon = sk_epsilon
+        self.sk_epsilon = sk_epsilon    # sinkhorn epsilon ｜ 软分配
         self.sk_iters = sk_iters
 
         self.embedding = nn.Embedding(self.n_e, self.e_dim)
+
         if not kmeans_init:
             self.initted = True
             self.embedding.weight.data.uniform_(-1.0 / self.n_e, 1.0 / self.n_e)
@@ -34,17 +35,14 @@ class VectorQuantizer(nn.Module):
         z_q = self.embedding(indices)
         if shape is not None:
             z_q = z_q.view(shape)
-
         return z_q
 
     def init_emb(self, data):
-
         centers = kmeans(
-            data,
-            self.n_e,
+            data,           # [num_samples, e_dim]
+            self.n_e,       # num_clusters
             self.kmeans_iters,
         )
-
         self.embedding.weight.data.copy_(centers)
         self.initted = True
 
@@ -63,11 +61,11 @@ class VectorQuantizer(nn.Module):
     def forward(self, x, use_sk=True):
         # Flatten input
         latent = x.view(-1, self.e_dim)
-
+        # Kmeans init
         if not self.initted and self.training:
             self.init_emb(latent)
 
-        # Calculate the L2 Norm between latent and Embedded weights
+        # Calculate the L2 Norm between latent and Embedded weights: 标准的欧氏距离展开公式
         d = torch.sum(latent**2, dim=1, keepdim=True) + \
             torch.sum(self.embedding.weight**2, dim=1, keepdim=True).t()- \
             2 * torch.matmul(latent, self.embedding.weight.t())
@@ -83,12 +81,13 @@ class VectorQuantizer(nn.Module):
             indices = torch.argmax(Q, dim=-1)
 
         # indices = torch.argmin(d, dim=-1)
-
         x_q = self.embedding(indices).view(x.shape)
 
         # compute loss for embedding
+        # 只对 encoder 产生梯度：鼓励 encoder 输出的连续 latent 靠近选中的 code 向量
         commitment_loss = F.mse_loss(x_q.detach(), x)
-        codebook_loss = F.mse_loss(x_q, x.detach())
+        # 只对 codebook 产生梯度：鼓励 codebook 适配 encoder 的 latent 分布 
+        codebook_loss = F.mse_loss(x_q, x.detach()) 
         loss = codebook_loss + self.beta * commitment_loss
 
         # preserve gradients
@@ -97,5 +96,3 @@ class VectorQuantizer(nn.Module):
         indices = indices.view(x.shape[:-1])
 
         return x_q, loss, indices
-
-

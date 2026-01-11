@@ -52,7 +52,8 @@ class RQVAE(nn.Module):
                                           kmeans_init = self.kmeans_init,
                                           kmeans_iters = self.kmeans_iters,
                                           sk_epsilons=self.sk_epsilons,
-                                          sk_iters=self.sk_iters,)
+                                          sk_iters=self.sk_iters,
+                                          )
 
         self.decode_layer_dims = self.encode_layer_dims[::-1]
         self.decoder = MLPLayers(layers=self.decode_layer_dims,
