@@ -450,11 +450,12 @@ class SidDataset(Dataset):
         target_item = str(row['item_sid'])
         target_item_sid = row["item_sid"]
         last_history_item_sid = row['history_item_sid'][-1] if row['history_item_sid'] else None
-        return {"input": f"The user has interacted with items {history} in chronological order. Can you predict the next possible item that the user may expect?",
-                # Analyze user preferences and then predict the semantic ID of the next item.
-                "output": target_item + "\n",
-                "history_str": history_str,
-                "dedup": target_item_sid == last_history_item_sid}
+        return {
+            "input": f"The user has interacted with items {history} in chronological order. Can you predict the next possible item that the user may expect?",
+            # Analyze user preferences and then predict the semantic ID of the next item.
+            "output": target_item,
+            "history_str": history_str,
+            "dedup": target_item_sid == last_history_item_sid}
     
     def pre(self, idx):
         history = self.get_history(self.data.iloc[idx])
@@ -468,7 +469,14 @@ class SidDataset(Dataset):
         return {
             "prompt": prompt,
             "completion": target_item,
-
+        }
+        
+    def pre_verl(self, idx):
+        history = self.get_history(self.data.iloc[idx])
+        
+        return {
+            "prompt": history['input'],
+            "groud_truth": history['output'],
         }
     
     def get_inputs(self):
@@ -477,6 +485,13 @@ class SidDataset(Dataset):
             inputs.append(self.pre(i))
             
         self.inputs = inputs
+        
+    def get_verl(self):
+        verl = []
+        for i in tqdm(range(len(self.data))):
+            verl.append(self.pre_verl(i))
+            
+        return verl
     
     def get_all(self):
         temp = []
@@ -1007,6 +1022,17 @@ class RLTitle2SidDataset(Dataset):
 {prompt}
 
 ### Response:\n{response}"""
+
+
+    def generate_input_output(self, data_point):
+        if data_point['task'] == 'title2sid':
+            prompt = f"Which item has the title: {data_point['input']}?"
+            response = data_point['output']
+        else:  # description2sid
+            prompt = f"An item can be described as follows: \"{data_point['input']}\". Which item is it describing?"
+            response = data_point['output']
+        
+        return prompt, response
     
     def pre(self, idx):
         data_point = self.data[idx]
@@ -1019,7 +1045,15 @@ class RLTitle2SidDataset(Dataset):
         return {
             "prompt": prompt,
             "completion": target_item,
- 
+        }
+    
+    def pre_verl(self, idx):
+        data_point = self.data[idx]
+        prompt, target_item = self.generate_prompt(data_point)
+        
+        return {
+            "prompt": prompt,
+            "groud_truth": target_item,
         }
     
     def get_inputs(self):
@@ -1027,6 +1061,12 @@ class RLTitle2SidDataset(Dataset):
         for i in tqdm(range(len(self.data))):
             inputs.append(self.pre(i))
         self.inputs = inputs
+    
+    def get_verl(self):
+        verl = []
+        for i in tqdm(range(len(self.data))):
+            verl.append(self.pre_verl(i))
+        return verl
     
     def get_all(self):
         temp = []
@@ -1106,8 +1146,34 @@ class RLSeqTitle2SidDataset(Dataset):
 {prompt}
 
 ### Response:\n{response}"""
+
+
     
+
+        
     def pre(self, idx):
+        history_data = self.get_history(self.data.iloc[idx])
+        
+        # Skip if duplicate and dedup is enabled
+        if self.dedup and history_data['dedup']:
+            return None
+        
+        # Generate prompt using title sequence
+        prompt = self.generate_prompt(history_data['inter_titles'])
+        target = history_data['target_sid']
+        
+        formatted_prompt = self.generate_formatted_prompt(prompt, "")
+        
+        self.prompt2history[formatted_prompt] = history_data['history_str']
+        self.history2target[history_data['history_str']] = target
+        
+        return {
+            "prompt": formatted_prompt,
+            "completion": target,
+        }
+    
+    
+    def pre_verl(self, idx):
         history_data = self.get_history(self.data.iloc[idx])
         
         # Skip if duplicate and dedup is enabled
@@ -1118,17 +1184,11 @@ class RLSeqTitle2SidDataset(Dataset):
         prompt = self.generate_prompt(history_data['inter_titles'])
         target = history_data['target_sid'] + '\n'
         
-        formatted_prompt = self.generate_formatted_prompt(prompt, "")
-        
-        self.prompt2history[formatted_prompt] = history_data['history_str']
-        self.history2target[history_data['history_str']] = target
-        
         return {
-            "prompt": formatted_prompt,
-            "completion": target,
-
+            "prompt": prompt,
+            "groud_truth": target,
         }
-    
+        
     def get_inputs(self):
         inputs = []
         for i in tqdm(range(len(self.data))):
@@ -1136,6 +1196,14 @@ class RLSeqTitle2SidDataset(Dataset):
             if result is not None:  # Skip None results from deduplication
                 inputs.append(result)
         self.inputs = inputs
+        
+    def get_verl(self):
+        verl = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_verl(i)
+            if result is not None:  # Skip None results from deduplication
+                verl.append(result)
+        return verl
     
     def get_all(self):
         temp = []
