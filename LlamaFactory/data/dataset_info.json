@@ -1,6 +1,6 @@
 {
   "train_sid_sft": {
-    "file_name": "train_sid_sft.jsonl",
+    "file_name": "../../data/llamafactory_data/train_sid_sft.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",
@@ -8,7 +8,7 @@
     }
   },
   "train_sid_item_feat": {
-    "file_name": "train_sid_item_feat.jsonl",
+    "file_name": "../../data/llamafactory_data/train_sid_item_feat.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",
@@ -16,7 +16,7 @@
     }
   },
   "train_fusion_seq_rec": {
-    "file_name": "train_fusion_seq_rec.jsonl",
+    "file_name": "../../data/llamafactory_data/train_fusion_seq_rec.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",
@@ -24,7 +24,7 @@
     }
   },
   "train_sft": {
-    "file_name": "train_sft.jsonl",
+    "file_name": "../../data/llamafactory_data/train_sft.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",
@@ -32,7 +32,7 @@
     }
   },
   "train_title_history2sid_sft": {
-    "file_name": "train_title_history2sid_sft.jsonl",
+    "file_name": "../../data/llamafactory_data/train_title_history2sid_sft.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",
@@ -40,7 +40,7 @@
     }
   },
   "val_sid_sft": {
-    "file_name": "val_sid_sft.jsonl",
+    "file_name": "../../data/llamafactory_data/val_sid_sft.jsonl",
     "columns": {
       "prompt": "instruction",
       "query": "input",

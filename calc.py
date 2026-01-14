@@ -9,14 +9,15 @@ import pandas as pd
 import numpy as np
     
 from tqdm import tqdm
+
 def gao(path, item_path):
     if type(path) != list:
         path = [path]
     if item_path.endswith(".txt"):
         item_path = item_path[:-4]
+        
     CC=0
         
-    
     f = open(f"{item_path}.txt", 'r')
     items = f.readlines()
     # item_names = [ _[:-len(_.split('\t')[-1])].strip() for _ in items]
@@ -29,8 +30,6 @@ def gao(path, item_path):
         else:   
             item_dict[item_names[i]].append(item_ids[i])
     
-    
-
     result_dict = dict()
     topk_list = [1, 3, 5, 10, 20, 50]
     n_beam = -1
@@ -44,9 +43,20 @@ def gao(path, item_path):
         test_data = json.load(f)
         f.close()
         
+        """
+        sample = 
+        [
+        {
+            "predict": ["itemA", "itemB", "itemC"],
+            "output": "itemB"
+        },
+        ...
+        ]
+        """
         text = [ [_.strip("\"\n").strip() for _ in sample["predict"]] for sample in test_data]
         
         for index, sample in tqdm(enumerate(text)):
+            # 这里的 sample 是本次的 预测 sid list
             if n_beam == -1:
                 n_beam = len(sample)
                 valid_topk = [k for k in topk_list if k <= n_beam]
@@ -56,6 +66,7 @@ def gao(path, item_path):
                 target_item = test_data[index]['output'][0].strip("\"").strip(" ")
             else:
                 target_item = test_data[index]['output'].strip(" \n\"")
+                
             minID = 1000000
             for i in range(len(sample)):
                 
@@ -73,12 +84,15 @@ def gao(path, item_path):
                 if minID < topk:
                     ALLNDCG[index] = ALLNDCG[index] + (1 / math.log(minID + 2))
                     ALLHR[index] = ALLHR[index] + 1
+                    
         print(n_beam)
         valid_topk = [k for k in topk_list if k <= n_beam]
         print(valid_topk)
         print(f"NDCG:\t{ALLNDCG / len(text) / (1.0 / math.log(2))}")
         print(f"HR\t{ALLHR / len(text)}")
         print(CC)
+
+
 
 if __name__=='__main__':
     fire.Fire(gao)

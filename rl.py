@@ -15,7 +15,6 @@ import math
 import json
 from sklearn.metrics import ndcg_score
 
-# os.environ['WANDB_MODE'] = 'disabled'
 
 def set_seed(seed):
     random.seed(seed)
@@ -111,7 +110,6 @@ def train(
     eval_dataset = Dataset.from_dict({k : [elm[k] for elm in eval_data] for k in eval_data[0].keys()})
     eval_dataset = eval_dataset.shuffle(seed=seed)
     
-
     # prompt2history = {**train_data.prompt2history, **eval_data.prompt2history}
     # history2target = {**train_data.history2target, **eval_data.history2target}
 
@@ -267,31 +265,32 @@ def train(
     os.environ['WANDB_PROJECT'] = wandb_project
     # os.environ["WANDB_MODE"] = "offline"
 
-    training_args = GRPOConfig(output_dir=output_dir,
-                                save_steps=0.1,
-                                save_total_limit=20,
-                                eval_strategy="steps",
-                                max_completion_length=128,
-                                num_generations=num_generations,
-                                temperature=temperature,
-                                sync_ref_model=sync_ref_model,
-                                per_device_eval_batch_size=eval_batch_size,
-                                per_device_train_batch_size=train_batch_size,
-                                gradient_accumulation_steps=gradient_accumulation_steps,  
-                                eval_steps=eval_step, 
-                                logging_steps=1, 
-                                learning_rate=learning_rate,
-                                beta=beta,
-                                warmup_ratio=0.03,
-                                max_grad_norm=0.3,
-                                num_train_epochs=num_train_epochs,
-                                bf16=True,
-                                optim="paged_adamw_32bit",
-                                lr_scheduler_type="cosine",
-                                save_strategy="steps",
-                                report_to="wandb",
-                                run_name=wandb_run_name,
-                            )
+    training_args = GRPOConfig(
+        output_dir=output_dir,
+        max_completion_length=128,
+        num_generations=num_generations,
+        temperature=temperature,
+        sync_ref_model=sync_ref_model,
+        per_device_eval_batch_size=eval_batch_size,
+        per_device_train_batch_size=train_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,  
+        eval_strategy="steps",
+        eval_steps=eval_step, 
+        logging_steps=1, 
+        learning_rate=learning_rate,
+        beta=beta,
+        warmup_ratio=0.03,
+        max_grad_norm=0.3,
+        num_train_epochs=num_train_epochs,
+        bf16=True,
+        optim="paged_adamw_32bit",
+        lr_scheduler_type="cosine",
+        save_strategy="steps",
+        save_steps=2000,
+        save_total_limit=20,
+        report_to="wandb",
+        run_name=wandb_run_name,
+    )
     trainer = ReReTrainer(
         model=model_path,
         base_model=model_path,

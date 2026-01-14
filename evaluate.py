@@ -17,6 +17,7 @@ if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
+    
 P = 998244353
 MOD = int(1e9 + 9)
 import numpy as np
@@ -37,7 +38,7 @@ def set_seed(seed):
     
 def main(
     base_model: str = "",
-    train_file: str = "",
+    # train_file: str = "",
     info_file: str = "",
     category: str = "",
     test_data_path: str = "",
@@ -51,37 +52,51 @@ def main(
 ):
     random.seed(seed)
     set_seed(seed)
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
     category_dict = {"Industrial_and_Scientific": "industrial and scientific items", "Office_Products": "office products", "Toys_and_Games": "toys and games", "Sports": "sports and outdoors", "Books": "books"}
     category = category_dict[category]
     print(category)
 
-    model = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.bfloat16, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(
+        base_model, 
+        torch_dtype=torch.bfloat16, 
+        device_map="auto"
+    )
     model.eval()
     with open(info_file, 'r') as f:
         info = f.readlines()
         # Parse new format: semantic_id \t item_title \t item_id
-        semantic_ids = [line.split('\t')[0].strip() + "\n" for line in info]
-        item_titles = [line.split('\t')[1].strip() + "\n" for line in info if len(line.split('\t')) >= 2]
-        
-        # Format for tokenization
-        info_semantic = [f'''### Response:\n{_}''' for _ in semantic_ids]
-        info_titles = [f'''### Response:\n{_}''' for _ in item_titles]
+        # semantic_ids = [line.split('\t')[0].strip() + "\n" for line in info]
+        # item_titles = [line.split('\t')[1].strip() + "\n" for line in info if len(line.split('\t')) >= 2]
 
+        # 不加 \n
+        semantic_ids = [line.split('\t')[0].strip() for line in info]
+        item_titles = [line.split('\t')[1].strip() for line in info if len(line.split('\t')) >= 2]
+        
+        # Format for tokenization —— 对于 llama factory sft，不需要前缀，直接用 semantic_ids 和 item_titles 即可
+        # info_semantic = [f'''### Response:\n{_}''' for _ in semantic_ids]
+        # info_titles = [f'''### Response:\n{_}''' for _ in item_titles]
 
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     
     # Create prefixID for semantic IDs (existing functionality)
-    if base_model.lower().find("llama") > -1:
-        prefixID = [tokenizer(_).input_ids[1:] for _ in info_semantic]
-        prefixTitleID = [tokenizer(_).input_ids[1:] for _ in info_titles]
-    else:
-        prefixID = [tokenizer(_).input_ids for _ in info_semantic]
-        prefixTitleID = [tokenizer(_).input_ids for _ in info_titles]
-    if base_model.lower().find("gpt2") > -1:
-        prefix_index = 4
-    else:
-        prefix_index = 3
+    # if base_model.lower().find("llama") > -1:
+    #     prefixID = [tokenizer(_).input_ids[1:] for _ in info_semantic]
+    #     prefixTitleID = [tokenizer(_).input_ids[1:] for _ in info_titles]
+    # else:
+    #     prefixID = [tokenizer(_).input_ids for _ in info_semantic]
+    #     prefixTitleID = [tokenizer(_).input_ids for _ in info_titles]
+    # if base_model.lower().find("gpt2") > -1:
+    #     prefix_index = 4
+    # else:
+    #     prefix_index = 3
+  
+    # 统一：不加 special tokens（避免 Llama 自动加 BOS 等带来的错位）
+    prefixID = [tokenizer(s, add_special_tokens=False).input_ids for s in semantic_ids]
+    prefixTitleID = [tokenizer(t, add_special_tokens=False).input_ids for t in item_titles]
+    # 没有固定前缀要跳过
+    prefix_index = 0
+
     
     # Build hash_dict for semantic IDs (existing functionality)
     hash_dict = dict()
@@ -140,21 +155,23 @@ def main(
     tokenizer.padding_side = "left"
     
     # val_dataset = EvalD3Dataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
-    val_dataset = EvalSidDataset(train_file=test_data_path, tokenizer=tokenizer, max_len=2560, category=category, test=True, K=K, seed=seed)
+    val_dataset = EvalSidDataset(train_file=test_data_path, tokenizer=tokenizer, max_len=1024, category=category, test=True, K=K, seed=seed)
         
-    encodings = [val_dataset[i] for i in range(len(val_dataset))]
+    # encodings = [val_dataset[i] for i in range(len(val_dataset))]
+    encodings = val_dataset.get_alpaca_inputs() # alpaca 格式输入
+    
     # encodings = [val_dataset[i] for i in indexes]
-    test_data = val_dataset.get_all()
+    test_data = val_dataset.get_alpaca()
 
     model.config.pad_token_id = model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
 
     def evaluate(
-            encodings,
-            num_beams=10,
-            max_new_tokens=64,
-            length_penalty=1.0,
-            **kwargs,
+        encodings,
+        num_beams=10,
+        max_new_tokens=64,
+        length_penalty=1.0,
+        **kwargs,
     ):
         maxLen = max([len(_["input_ids"]) for _ in encodings])
 
@@ -202,11 +219,15 @@ def main(
         else:
             output = tokenizer.batch_decode(batched_completions, skip_special_tokens=True)
             
-        output = [_.split("Response:\n")[-1].strip() for _ in output]
+        # output = [_.split("Response:\n")[-1].strip() for _ in output]
+        output = [_.strip() for _ in output] # [batch_size * num_beams]
+        
+        # Reshape to real_outputs: [batch_size, num_beams]
         real_outputs = [output[i * num_beams: (i + 1) * num_beams] for i in range(len(output) // num_beams)]
+        
         return real_outputs
     
-    model = model.to(device)
+    # model = model.to(device)
 
     from tqdm import tqdm
     outputs = []
@@ -219,7 +240,6 @@ def main(
     for idx, encodings in enumerate(tqdm(new_encodings)):
         # Use standard evaluation
         output = evaluate(encodings, max_new_tokens=max_new_tokens, num_beams=num_beams, length_penalty=length_penalty)
-        
         outputs = outputs + output
        
     for i, test in enumerate(test_data):

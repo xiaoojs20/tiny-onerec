@@ -476,7 +476,7 @@ class SidDataset(Dataset):
         
         return {
             "prompt": history['input'],
-            "groud_truth": history['output'],
+            "ground_truth": history['output'],
         }
     
     def get_inputs(self):
@@ -644,14 +644,15 @@ class EvalSidDataset(Dataset):
         if sample > 0:
             self.data = self.data.sample(sample, random_state=seed)
         self.tokenizer = Tokenizer(tokenizer)
+        self.hf_tokenizer = tokenizer
         self.test = test
         self.max_len = max_len
         self.category = category
         self.dedup = dedup
         self.get_inputs()  
+
     def __len__(self):
         return len(self.data)
-
 
     def generate_example_prompt(self, data_point):
         return f"""### Example {data_point["idx"]}:
@@ -680,7 +681,7 @@ class EvalSidDataset(Dataset):
         last_history_item_sid = row['history_item_sid'][-1] if row['history_item_sid'] else None
         return {"input": # f"The user has interacted with items {history} in chronological order. Can you predict the next possible item that the user may expect?",
                 f"Can you predict the next possible item the user may expect, given the following chronological interaction history: {history}",
-                "output": target_item + '\n',
+                "output": target_item,
                 "dedup": target_item_sid == last_history_item_sid}
     
     
@@ -699,7 +700,6 @@ Can you predict the next possible item that the user may expect?
         negative_prompt_ids = copy.deepcopy(tokens)
         
                 
-           
         prompt = self.generate_prompt(history)
 
         tokens = tokens + self.tokenizer.encode(prompt, bos=False, eos=False)
@@ -711,8 +711,7 @@ Can you predict the next possible item that the user may expect?
         if self.test:
             return {
                 "input_ids": tokens,
-                "attention_mask": attention_mask,
-                
+                "attention_mask": attention_mask,  
             }    
         
         golden_tokens = self.tokenizer.encode(target_item, bos=False, eos=True)
@@ -724,17 +723,79 @@ Can you predict the next possible item that the user may expect?
         if len(tokens) >= self.max_len:
             print(len(tokens))
         
-        
         return {
             "input_ids": tokens[-self.max_len:],
             "attention_mask": attention_mask[-self.max_len:],
             "labels": labels[-self.max_len:],
-            
         }
     
+    def pre_alpaca(self, idx):
+        # instruction =  f"Can you predict the next possible item that the user may expect?"
+        history = self.get_history(self.data.iloc[idx]) 
+        # self.tokenizer.encode(prompt, bos=False, eos=False)
+        # return {
+        #     "instruction": instruction,
+        #     "input": history['input'],
+        #     "output": history['output'],
+        # }
+        return {
+            "instruction": history['input'],
+            "input": None,
+            "output": history['output'],
+        }
+    
+    def pre_alpaca_tokens(self, idx):
+        ex = self.pre_alpaca(idx)
+        instruction = (ex["instruction"] or "").strip()
+        user_input  = (ex["input"] or "").strip()
+        answer      = (ex["output"] or "").strip()
 
-    
-    
+        # instruction + input 都放到 user
+        if user_input:
+            user_content = f"{instruction}\n\n{user_input}"
+        else:
+            user_content = instruction
+            
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": user_content},
+        ]
+
+        # 3) 得到 prompt token ids：末尾带 assistant 起始标记
+        prompt_ids = self.hf_tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True, 
+        )
+
+        # attention mask（全 1 即可，padding 在 collator 里做更规范）
+        attention_mask = [1] * len(prompt_ids)
+
+        # test：只返回 prompt
+        if self.test:
+            return {
+                "input_ids": prompt_ids[-self.max_len:],
+                "attention_mask": attention_mask[-self.max_len:],
+            }
+
+        # 4) encode 答案（不加 special tokens，手动加 eos）
+        answer_ids = self.tokenizer.encode(answer, add_special_tokens=False)
+        if self.tokenizer.eos_token_id is not None:
+            answer_ids = answer_ids + [self.tokenizer.eos_token_id]
+
+        input_ids = prompt_ids + answer_ids
+        attention_mask = [1] * len(input_ids)
+
+        # 只监督 answer 部分
+        labels = [-100] * len(prompt_ids) + answer_ids
+
+        # 截断（与你原 pre() 一致）
+        return {
+            "input_ids": input_ids[-self.max_len:],
+            "attention_mask": attention_mask[-self.max_len:],
+            "labels": labels[-self.max_len:],
+        }
+
     def get_inputs(self):
         inputs = []
         for i in tqdm(range(len(self.data))):
@@ -742,7 +803,23 @@ Can you predict the next possible item that the user may expect?
             
         self.inputs = inputs
     
+    def get_alpaca(self):
+        alpaca = []
+        for i in tqdm(range(len(self.data))):
+            result = self.pre_alpaca(i)
+            if result is not None:  # Skip None results from deduplication
+                alpaca.append(result)
+                
+        return alpaca
+
     
+    def get_alpaca_inputs(self):
+        inputs = []
+        for i in tqdm(range(len(self.data))):
+            inputs.append(self.pre_alpaca_tokens(i))
+        self.inputs = inputs
+        return inputs
+
     def get_all(self):
         temp = []
         for i in range(len(self.data)):
@@ -1049,11 +1126,11 @@ class RLTitle2SidDataset(Dataset):
     
     def pre_verl(self, idx):
         data_point = self.data[idx]
-        prompt, target_item = self.generate_prompt(data_point)
+        prompt, target_item = self.generate_input_output(data_point)
         
         return {
             "prompt": prompt,
-            "groud_truth": target_item,
+            "ground_truth": target_item,
         }
     
     def get_inputs(self):
@@ -1182,11 +1259,11 @@ class RLSeqTitle2SidDataset(Dataset):
         
         # Generate prompt using title sequence
         prompt = self.generate_prompt(history_data['inter_titles'])
-        target = history_data['target_sid'] + '\n'
+        target = history_data['target_sid']
         
         return {
             "prompt": prompt,
-            "groud_truth": target,
+            "ground_truth": target,
         }
         
     def get_inputs(self):
